@@ -370,7 +370,7 @@
   var SYM = ["チン", "ビン", "カン", "マン"];
   var REELS = 4;
 
-  // 役。上から順に判定する。
+  // 役。この3つ以外は全部ハズレ。
   var HANDS = [
     { pat: "ビンビンチンチン", name: "ちびかま！", pts: 12000, top: true,
       test: function (r) { return r.join("") === "ビンビンチンチン"; },
@@ -378,36 +378,9 @@
     { pat: "ビンカンチンチン", name: "敏感", pts: 10000, top: true,
       test: function (r) { return r.join("") === "ビンカンチンチン"; },
       quip: "触んな。" },
-    { pat: "ビンカンマンマン", name: "超敏感", pts: 10000, top: true,
-      test: function (r) { return r.join("") === "ビンカンマンマン"; },
-      quip: "もっと触んな。" },
     { pat: "チンビンカンマン", name: "完全体", pts: 8000, top: true,
       test: function (r) { return r.join("") === "チンビンカンマン"; },
-      quip: "並び順まで完璧。もう帰っていい。" },
-    { pat: "同じの4つ", name: "四連", pts: 5000,
-      test: function (r) { return uniq(r).length === 1; },
-      quip: "うるさい。" },
-    { pat: "4種そろい", name: "四天王", pts: 2000,
-      test: function (r) { return uniq(r).length === 4; },
-      quip: "全員集合。順番はぐちゃぐちゃ。" },
-    { pat: "同じの3つ", name: "三連", pts: 800,
-      test: function (r) { return maxCount(r) === 3; },
-      quip: "惜しい。あと1個。" },
-    { pat: "2ペア", name: "夫婦", pts: 400,
-      test: function (r) { return uniq(r).length === 2 && maxCount(r) === 2; },
-      quip: "きれいに分かれた。" },
-    { pat: "隣どうしで チン+カン", name: "珍寒", pts: 300,
-      test: function (r) {
-        for (var i = 0; i < REELS - 1; i++) {
-          var a = r[i], b = r[i + 1];
-          if ((a === "チン" && b === "カン") || (a === "カン" && b === "チン")) return true;
-        }
-        return false;
-      },
-      quip: "寒い。" },
-    { pat: "1ペア", name: "小役", pts: 150,
-      test: function (r) { return maxCount(r) === 2; },
-      quip: "とりあえず生きてる。" }
+      quip: "並び順まで完璧。もう帰っていい。" }
   ];
 
   var MISS = [
@@ -418,21 +391,6 @@
     "これが実力です。",
     "台がおかしい。"
   ];
-
-  function uniq(a) {
-    var out = [];
-    for (var i = 0; i < a.length; i++) if (out.indexOf(a[i]) < 0) out.push(a[i]);
-    return out;
-  }
-  function maxCount(a) {
-    var best = 0;
-    for (var i = 0; i < a.length; i++) {
-      var n = 0;
-      for (var j = 0; j < a.length; j++) if (a[j] === a[i]) n++;
-      if (n > best) best = n;
-    }
-    return best;
-  }
 
   // ---- 音 ----
   var ctx = null, muted = false;
@@ -617,9 +575,7 @@
       streak++;
       telop(hand.name + " " + hand.pts.toLocaleString("ja-JP"), line + " — " + hand.quip,
         hand.top ? "jackpot" : "");
-      if (hand.top) fanfare([523, 659, 784, 1047, 1319], 80);
-      else if (hand.pts >= 800) fanfare([523, 659, 784], 90);
-      else beep(660, 0.14);
+      fanfare([523, 659, 784, 1047, 1319], 80);
     } else {
       score -= 50;
       streak = 0;
