@@ -286,6 +286,21 @@
     white-space: nowrap;
   }
   tr.top td.pat, tr.top td.pt { color: var(--neon); }
+  td.od {
+    text-align: right;
+    padding-left: 10px;
+    font-size: 11px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ev {
+    margin: 10px 0 0;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+    font-size: 11px;
+    color: var(--dim);
+  }
   #log {
     list-style: none;
     margin: 0; padding: 0;
@@ -353,6 +368,7 @@
     <section class="panel">
       <h2>配 当 表</h2>
       <table id="paytable"></table>
+      <p class="ev" id="ev"></p>
     </section>
     <section class="panel">
       <h2>実 況 履 歴</h2>
@@ -367,18 +383,27 @@
 (function () {
   "use strict";
 
-  var SYM = ["チン", "ビン", "カン", "マン"];
   var REELS = 4;
+  var PENALTY = 150; // ハズレたときに引かれる点
+
+  // リールごとの絵柄並び。同じ絵柄を重ねたぶんだけ止まりやすい。
+  // これで3役の出やすさに差が付く（ちびかま！が一番レア）。
+  var STRIPS = [
+    ["チン", "チン", "ビン", "カン", "マン"], // チンが濃い
+    ["チン", "ビン", "カン", "カン", "マン"], // カンが濃い
+    ["チン", "ビン", "カン", "カン", "マン"], // カンが濃い
+    ["チン", "ビン", "カン", "マン", "マン"]  // マンが濃い
+  ];
 
   // 役。この3つ以外は全部ハズレ。
   var HANDS = [
-    { pat: "ビンビンチンチン", name: "ちびかま！", pts: 12000, top: true,
+    { pat: "ビンビンチンチン", name: "ちびかま！", pts: 25000, top: true,
       test: function (r) { return r.join("") === "ビンビンチンチン"; },
       quip: "出た！！！これが見たかった！！！" },
-    { pat: "ビンカンチンチン", name: "敏感", pts: 10000, top: true,
+    { pat: "ビンカンチンチン", name: "敏感", pts: 12000, top: true,
       test: function (r) { return r.join("") === "ビンカンチンチン"; },
       quip: "触んな。" },
-    { pat: "チンビンカンマン", name: "完全体", pts: 8000, top: true,
+    { pat: "チンビンカンマン", name: "完全体", pts: 3000, top: true,
       test: function (r) { return r.join("") === "チンビンカンマン"; },
       quip: "並び順まで完璧。もう帰っていい。" }
   ];
@@ -424,15 +449,16 @@
     wrap.className = "reel";
     var strip = document.createElement("div");
     strip.className = "strip";
-    for (var k = 0; k < 12; k++) {
+    var syms = STRIPS[i];
+    for (var k = 0; k < syms.length * 3; k++) {
       var s = document.createElement("div");
       s.className = "sym";
-      s.textContent = SYM[k % 4];
+      s.textContent = syms[k % syms.length];
       strip.appendChild(s);
     }
     wrap.appendChild(strip);
     reelsEl.appendChild(wrap);
-    reels.push({ el: wrap, strip: strip, offset: 0, spinning: false, anim: null, speed: 0 });
+    reels.push({ el: wrap, strip: strip, syms: syms, offset: 0, spinning: false, anim: null, speed: 0 });
 
     var b = document.createElement("button");
     b.innerHTML = "STOP <span class=\"key\">" + (i + 1) + "</span>";
@@ -455,8 +481,9 @@
   function cellH() {
     return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cell"));
   }
-  function symbolAt(offset, h) {
-    return SYM[(Math.floor(offset / h) + 1) % 4];
+  function symbolAt(r, h) {
+    var n = r.syms.length;
+    return r.syms[(Math.floor(r.offset / h) + 1) % n];
   }
   function draw(r) {
     r.strip.style.transform = "translateY(" + (-r.offset) + "px)";
@@ -495,9 +522,10 @@
   function tick(now) {
     var dt = last ? Math.min(now - last, 50) : 16;
     last = now;
-    var h = cellH(), loop = h * 4, any = false;
+    var h = cellH(), any = false;
     for (var i = 0; i < reels.length; i++) {
       var r = reels[i];
+      var loop = h * r.syms.length;
       if (r.spinning) {
         r.offset = (r.offset + r.speed * dt) % loop;
         draw(r);
@@ -543,13 +571,14 @@
   function stopReel(i) {
     var r = reels[i];
     if (!r.spinning) return;
-    var h = cellH(), loop = h * 4;
-    var want = Math.floor(Math.random() * 4);
-    // 目標: (floor(offset/h)+1)%4 === want かつ offset が h の倍数
-    var k = ((want - 1) % 4 + 4) % 4;
+    var n = r.syms.length;
+    var h = cellH(), loop = h * n;
+    var want = Math.floor(Math.random() * n);
+    // 目標: (floor(offset/h)+1)%n === want かつ offset が h の倍数
+    var k = ((want - 1) % n + n) % n;
     var from = r.offset;
     var to = Math.ceil(from / h) * h;
-    while (((to / h) % 4 + 4) % 4 !== k) to += h;
+    while (((to / h) % n + n) % n !== k) to += h;
     to += loop; // 最低1周は余分に回す
     r.spinning = false;
     r.btn.disabled = true;
@@ -564,7 +593,7 @@
 
   function judge() {
     var h = cellH();
-    var res = reels.map(function (r) { return symbolAt(r.offset, h); });
+    var res = reels.map(function (r) { return symbolAt(r, h); });
     var hand = null;
     for (var i = 0; i < HANDS.length; i++) {
       if (HANDS[i].test(res)) { hand = HANDS[i]; break; }
@@ -577,7 +606,7 @@
         hand.top ? "jackpot" : "");
       fanfare([523, 659, 784, 1047, 1319], 80);
     } else {
-      score -= 50;
+      score -= PENALTY;
       streak = 0;
       telop("ハズレ", line + " — " + MISS[Math.floor(Math.random() * MISS.length)], "miss");
       beep(120, 0.22, "sawtooth", 0.05);
@@ -603,7 +632,7 @@
     sp.textContent = hand ? hand.name : "—";
     var p = document.createElement("span");
     p.className = "p";
-    p.textContent = hand ? "+" + hand.pts.toLocaleString("ja-JP") : "-50";
+    p.textContent = hand ? "+" + hand.pts.toLocaleString("ja-JP") : "-" + PENALTY;
     li.appendChild(b); li.appendChild(sp); li.appendChild(p);
     logEl.insertBefore(li, logEl.firstChild);
     while (logEl.children.length > 30) logEl.removeChild(logEl.lastChild);
@@ -643,18 +672,44 @@
   });
 
   // ---- 配当表 ----
+  // 並びを総当たりして、確率と1回あたりの期待値を実測する。
+  function analyze() {
+    var s = reels.map(function (r) { return r.syms; });
+    var total = 0, gain = 0;
+    var hits = HANDS.map(function () { return 0; });
+    for (var a = 0; a < s[0].length; a++)
+      for (var b = 0; b < s[1].length; b++)
+        for (var c = 0; c < s[2].length; c++)
+          for (var d = 0; d < s[3].length; d++) {
+            total++;
+            var row = [s[0][a], s[1][b], s[2][c], s[3][d]], won = false;
+            for (var i = 0; i < HANDS.length; i++) {
+              if (HANDS[i].test(row)) { hits[i]++; gain += HANDS[i].pts; won = true; break; }
+            }
+            if (!won) gain -= PENALTY;
+          }
+    return { total: total, hits: hits, ev: gain / total };
+  }
+
+  var odds = analyze();
   var tbl = document.getElementById("paytable");
-  HANDS.forEach(function (h) {
+  HANDS.forEach(function (h, i) {
     var tr = document.createElement("tr");
     if (h.top) tr.className = "top";
     tr.innerHTML = "<td class=\"pat\">" + h.pat + "</td>" +
       "<td class=\"nm\">" + h.name + "</td>" +
+      "<td class=\"od\">" + odds.hits[i] + "/" + odds.total + "</td>" +
       "<td class=\"pt\">" + h.pts.toLocaleString("ja-JP") + "</td>";
     tbl.appendChild(tr);
   });
+  var missCount = odds.total - odds.hits.reduce(function (a, b) { return a + b; }, 0);
   var miss = document.createElement("tr");
-  miss.innerHTML = "<td class=\"pat\">上記以外</td><td class=\"nm\">ハズレ</td><td class=\"pt\">-50</td>";
+  miss.innerHTML = "<td class=\"pat\">上記以外</td><td class=\"nm\">ハズレ</td>" +
+    "<td class=\"od\">" + missCount + "/" + odds.total + "</td>" +
+    "<td class=\"pt\">-" + PENALTY + "</td>";
   tbl.appendChild(miss);
+  document.getElementById("ev").textContent =
+    "1回まわすと平均 " + odds.ev.toFixed(1) + "点。回すほど沈む。";
 
   reels.forEach(draw);
   render();
